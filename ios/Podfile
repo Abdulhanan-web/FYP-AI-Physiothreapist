@@ -1,0 +1,26 @@
+platform :ios, '15.5'
+
+# CocoaPods analytics sending disabled
+ENV['COCOAPODS_DISABLE_STATS'] = 'true'
+
+project 'Runner', {
+  'Debug' => :debug,
+  'Profile' => :release,
+  'Release' => :release,
+}
+
+install! 'cocoapods',
+         :disable_input_output_paths => true
+
+flutter_root = File.expand_path('..', File.join(File.dirname(__FILE__), 'Flutter'))
+load File.join(flutter_root, 'podhelper.rb')
+
+target 'Runner' do
+  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+end
+
+post_install do |installer|
+  installer.pods_project.targets.each do |target|
+    flutter_additional_ios_build_settings(target)
+  end
+end
