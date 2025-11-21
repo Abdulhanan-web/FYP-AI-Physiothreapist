@@ -1,9 +1,8 @@
 import 'dart:io';
-import 'dart:math' as math;
 import 'package:camera/camera.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
+import 'dart:math' as math;
 
 class LiveCameraView extends StatefulWidget {
   final CameraDescription camera;
@@ -41,7 +40,8 @@ class _LiveCameraViewState extends State<LiveCameraView> {
     );
 
     await controller!.initialize();
-    controller!.startImageStream(processCameraImage);
+    await controller!.startImageStream(processCameraImage);
+
     if (mounted) setState(() {});
   }
 
@@ -54,11 +54,9 @@ class _LiveCameraViewState extends State<LiveCameraView> {
         bytes: image.planes[0].bytes,
         metadata: InputImageMetadata(
           size: Size(image.width.toDouble(), image.height.toDouble()),
-          rotation: InputImageRotationValue.fromRawValue(
-              widget.camera.sensorOrientation) ??
+          rotation: InputImageRotationValue.fromRawValue(widget.camera.sensorOrientation) ??
               InputImageRotation.rotation0deg,
-          format:
-          Platform.isAndroid ? InputImageFormat.nv21 : InputImageFormat.bgra8888,
+          format: Platform.isAndroid ? InputImageFormat.nv21 : InputImageFormat.bgra8888,
           bytesPerRow: image.planes[0].bytesPerRow,
         ),
       );
@@ -88,35 +86,38 @@ class _LiveCameraViewState extends State<LiveCameraView> {
       );
     }
 
+    // Camera aspect ratio (width/height)
+    final cameraAspectRatio =
+        controller!.value.previewSize!.height / controller!.value.previewSize!.width;
+
     return Scaffold(
       backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          // Fullscreen camera preview
-          SizedBox.expand(
-            child: CameraPreview(controller!),
-          ),
-          // Fullscreen pose overlay
-          SizedBox.expand(
-            child: CustomPaint(
-              painter: LivePosePainter(
-                poses,
-                controller!.value.previewSize!,
-                controller!.description.lensDirection,
+      body: Center(
+        child: AspectRatio(
+          aspectRatio: cameraAspectRatio,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              CameraPreview(controller!),
+              CustomPaint(
+                painter: LivePosePainter(
+                  poses,
+                  controller!.value.previewSize!,
+                  controller!.description.lensDirection,
+                ),
               ),
-            ),
+              Positioned(
+                top: 40,
+                left: 20,
+                child: FloatingActionButton(
+                  backgroundColor: Colors.black,
+                  onPressed: () => Navigator.pop(context),
+                  child: const Icon(Icons.arrow_back, color: Colors.white),
+                ),
+              ),
+            ],
           ),
-          // Back button
-          Positioned(
-            top: 40,
-            left: 20,
-            child: FloatingActionButton(
-              backgroundColor: Colors.black,
-              onPressed: () => Navigator.pop(context),
-              child: const Icon(Icons.arrow_back, color: Colors.white),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -131,42 +132,37 @@ class LivePosePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // MLKit gives portrait coordinates (height > width)
-    final double imageW = previewSize.height;  // 720
-    final double imageH = previewSize.width;   // 1280
+    // ML Kit coordinates are always portrait
+    double imageWidth = previewSize.height.toDouble();
+    double imageHeight = previewSize.width.toDouble();
 
-    // Scaling
-    double scaleW = size.width / imageW;
-    double scaleH = size.height / imageH;
-    double scale = math.min(scaleW, scaleH);
-
-    // Centering
-    double offsetX = (size.width  - imageW * scale) / 2;
-    double offsetY = (size.height - imageH * scale) / 2;
+    // Scale to fit AspectRatio container without distortion
+    double scale = math.min(size.width / imageWidth, size.height / imageHeight);
+    double offsetX = (size.width - imageWidth * scale) / 2;
+    double offsetY = (size.height - imageHeight * scale) / 2;
 
     Paint pointPaint = Paint()
       ..color = Colors.green
-      ..style = PaintingStyle.fill
-      ..strokeWidth = 4;
+      ..style = PaintingStyle.fill;
 
     Paint linePaint = Paint()
       ..color = Colors.yellow
       ..strokeWidth = 3;
 
     for (Pose pose in poses) {
+      // Draw landmarks
       pose.landmarks.forEach((_, lm) {
-        // Use pixel values directly
         double x = lm.x * scale + offsetX;
         double y = lm.y * scale + offsetY;
 
-        // Mirror for selfie camera
         if (lensDirection == CameraLensDirection.front) {
-          x = size.width - x;
+          x = size.width - x; // mirror front camera
         }
 
         canvas.drawCircle(Offset(x, y), 5, pointPaint);
       });
 
+      // Draw skeleton connections
       void draw(PoseLandmarkType a, PoseLandmarkType b) {
         final p1 = pose.landmarks[a];
         final p2 = pose.landmarks[b];
@@ -174,7 +170,6 @@ class LivePosePainter extends CustomPainter {
 
         double x1 = p1.x * scale + offsetX;
         double y1 = p1.y * scale + offsetY;
-
         double x2 = p2.x * scale + offsetX;
         double y2 = p2.y * scale + offsetY;
 
@@ -191,11 +186,9 @@ class LivePosePainter extends CustomPainter {
       draw(PoseLandmarkType.rightElbow, PoseLandmarkType.rightShoulder);
       draw(PoseLandmarkType.leftWrist, PoseLandmarkType.leftElbow);
       draw(PoseLandmarkType.rightWrist, PoseLandmarkType.rightElbow);
-
       draw(PoseLandmarkType.leftShoulder, PoseLandmarkType.leftHip);
       draw(PoseLandmarkType.rightShoulder, PoseLandmarkType.rightHip);
       draw(PoseLandmarkType.leftHip, PoseLandmarkType.rightHip);
-
       draw(PoseLandmarkType.leftHip, PoseLandmarkType.leftKnee);
       draw(PoseLandmarkType.rightHip, PoseLandmarkType.rightKnee);
       draw(PoseLandmarkType.leftKnee, PoseLandmarkType.leftAnkle);
